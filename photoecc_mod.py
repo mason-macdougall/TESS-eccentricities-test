@@ -28,7 +28,6 @@ import theano
 #theano.config.scan.allow_output_prealloc=False
 
 # Analysis
-import seaborn as sb
 import theano.tensor as tt
 import scipy
 import scipy.stats as sstat
@@ -40,7 +39,6 @@ import numpy as np
 from numpy.random import normal, multivariate_normal
 import uncertainties
 from uncertainties import ufloat
-import arviz as az
 from scipy.stats import kde as kdest
 from sklearn.neighbors import KernelDensity
 
@@ -50,15 +48,10 @@ from astropy.io import fits
 import astropy.units as u
 from astropy.coordinates import SkyCoord
 import pandas as pd
-from tqdm import tqdm
-
 
 # Plotting
-import arviz as az
 import matplotlib
 import matplotlib.pyplot as plt
-import corner
-import seaborn as sns
 from chainconsumer import ChainConsumer
 import chainconsumer.analysis
 
@@ -1106,6 +1099,8 @@ def plot_light_curve(x, y, yerr, soln, mask=None, g=-1, spread=0, ylim=[], idx='
         plt.close()
 
     return figs;
+
+
 
 ### Begin transit model description and analysis
 
