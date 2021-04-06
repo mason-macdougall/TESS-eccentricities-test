@@ -1,4 +1,4 @@
-# TESS-eccentricities
+# TESS-eccentricities-test
 
 This is the complete code for my photo-eccentric model, 
 including data download, light curve processing, 
