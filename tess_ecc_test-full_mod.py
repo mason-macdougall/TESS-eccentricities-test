@@ -1,5 +1,8 @@
 #!/u/home/m/macdouga/miniconda3/bin/python3
 
+import time as timer
+start_time = timer.time()
+
 # Set up system requirements
 import sys
 import os, fnmatch
@@ -94,14 +97,14 @@ rhosun_err = rhosun_u.s           # g / cc
 day = 86400                       # seconds
 
 
-
+print("--- %s seconds ---" % (timer.time() - start_time))
 
 
 
 #####################################################
 
 
-date = '30Jun21'
+date = '11Aug21'
 
 # Database for all TESS candidates import and relavent paths
 lc_path = '/u/scratch/m/macdouga/tess_ecc_test-ecc/'
@@ -119,7 +122,7 @@ tess_pl = all_data
 #####################################################
 
 
-
+print("--- %s seconds ---" % (timer.time() - start_time))
 
 
 pl = int(sys.argv[1])
@@ -366,7 +369,8 @@ for full_toi_id in full_toi_ids:
 
     #print(termination_code)
 
-
+    print("--- %s seconds ---" % (timer.time() - start_time))
+    
     ####### LDTK Analysis ########
     teff_err_u = teff_err_true
 
@@ -400,7 +404,7 @@ for full_toi_id in full_toi_ids:
     print(us)
     print(us_err)
     
-
+    print("--- %s seconds ---" % (timer.time() - start_time))
     print('\n' + 'Compiling data for: ' + candidate_id)
 
 
@@ -476,6 +480,8 @@ print(sys_name)
 print(lc_fname)
 print(lc_path)
 
+print("--- %s seconds ---" % (timer.time() - start_time))
+
 try:
     f = fits.open(lc_path + 'lightcurves/' + lc_fname)
     f.close()
@@ -532,6 +538,7 @@ except FileNotFoundError:
 
 ####################################################################
 
+print("--- %s seconds ---" % (timer.time() - start_time))
 
 note = ''
 
@@ -1125,123 +1132,232 @@ rho_test_err = 0.3427792244909791 #0.31181778821821887 #0.13716684811003000
 
 # Working code - no ecc/w
 
-def build_model(x, y, yerr, start=None, mask=None, test=1, gp_flag=1): 
+def build_model(x, y, yerr, start=None, mask=None, test=1, gp_flag=1, model_mode='duration'): 
     if mask is None:
         mask = np.ones(len(x), dtype=bool)
     # This is the current test - modified to look like my old starry model
-    with pm.Model() as model0:
+    if model_mode == 'full':
+        with pm.Model() as model0:
 
-        # The baseline flux
-        mean = pm.Normal("mean", mu=0.0, sd=1.0)
+            # The baseline flux
+            mean = pm.Normal("mean", mu=0.0, sd=1.0)
 
-        # The time of a reference transit for each planet
-        BoundedNormal_t0 = pm.Bound(pm.Normal, lower=t0s_true-0.5*pers_true, upper=t0s_true+0.5*pers_true)
-        t0 = BoundedNormal_t0("t0", mu=t0s_true, sd=0.01, shape=shape)
+            # The time of a reference transit for each planet
+            BoundedNormal_t0 = pm.Bound(pm.Normal, lower=t0s_true-0.5*pers_true, upper=t0s_true+0.5*pers_true)
+            t0 = BoundedNormal_t0("t0", mu=t0s_true, sd=0.01, shape=shape)
 
-        # The log period; also tracking the period itself
-        BoundedNormal_per = pm.Bound(pm.Normal, lower=(pers_true*0.9), upper=(pers_true*1.1))
-        period = BoundedNormal_per("period", mu=(pers_true), sd=0.1, shape=shape)
+            # The log period; also tracking the period itself
+            BoundedNormal_per = pm.Bound(pm.Normal, lower=(pers_true*0.9), upper=(pers_true*1.1))
+            period = BoundedNormal_per("period", mu=(pers_true), sd=0.1, shape=shape)
 
-        
-        # The stellar limb darkening parameters, using inputs from LDTK if stellar data is available
-        BoundedNormal_u_star = pm.Bound(pm.Normal, lower=-1.0, upper=1.0)
-        u_star = BoundedNormal_u_star("u_star", mu=us, sd=us_err, shape=2)
+            
+            # The stellar limb darkening parameters, using inputs from LDTK if stellar data is available
+            BoundedNormal_u_star = pm.Bound(pm.Normal, lower=-1.0, upper=1.0)
+            u_star = BoundedNormal_u_star("u_star", mu=us, sd=us_err, shape=2)
 
-        # The log stellar density; also tracking the stellar density itself
-        #logrho_star = pm.Uniform("logrho_star", lower=-8.0, upper=5.0, shape=shape)
-        #rho_star = pm.Deterministic("rho_star", tt.exp(logrho_star))
-        rho_star = pm.Normal("rho_star", mu=rho_test, sd=rho_test_err, shape=shape)
+            # The log stellar density; also tracking the stellar density itself
+            #logrho_star = pm.Uniform("logrho_star", lower=-8.0, upper=5.0, shape=shape)
+            #rho_star = pm.Deterministic("rho_star", tt.exp(logrho_star))
+            rho_star = pm.Normal("rho_star", mu=rho_test, sd=rho_test_err, shape=shape)
 
-        
-        # The log planet radius ratio; also tracking the radius ratio itself
-        ###logr = pm.Uniform("logr", lower=-10.0, upper=0.0, testval=np.log(rp_rss_true), shape=shape)
-        ###r = pm.Deterministic("r", tt.exp(logr))
-
-
-        BoundedNormal_logr = pm.Bound(pm.Normal, lower=-10.0, upper=0.0)
-        logr = BoundedNormal_logr("logr", mu=np.log(rp_rss_true), sd=10.0, shape=shape)
-        r = pm.Deterministic("r", tt.exp(logr))
-
-        
-        b_bound = 2.0 #pm.Deterministic("b_bound", 1+r)
-
-        # The impact parameter as a free variable, not related to stellar radius ratio directly here
-        ## ## ##b = pm.Uniform("b", lower=0.000, upper=b_bound, shape=shape, testval=bs)
-        b = xo.distributions.ImpactParameter("b", ror=r, shape=shape, testval=bs)
-        
-
-        ecs = xo.UnitDisk("ecs", testval=np.array([0.01, 0.0]))
-        ecc = pm.Deterministic("ecc", tt.sum(ecs ** 2))
-        omega = pm.Deterministic("omega", tt.arctan2(ecs[1], ecs[0]))
+            
+            # The log planet radius ratio; also tracking the radius ratio itself
+            ###logr = pm.Uniform("logr", lower=-10.0, upper=0.0, testval=np.log(rp_rss_true), shape=shape)
+            ###r = pm.Deterministic("r", tt.exp(logr))
 
 
+            BoundedNormal_logr = pm.Bound(pm.Normal, lower=-10.0, upper=0.0)
+            logr = BoundedNormal_logr("logr", mu=np.log(rp_rss_true), sd=10.0, shape=shape)
+            r = pm.Deterministic("r", tt.exp(logr))
 
-        # Set up a Keplerian orbit for the planets
-        orbit = xo.orbits.KeplerianOrbit(period=period, t0=t0, b=b, rho_star=rho_star, ecc=ecc, omega=omega)
+            
+            b_bound = 2.0 #pm.Deterministic("b_bound", 1+r)
 
-
-        # Compute the model light curve using starry
-        light_curves = xo.LimbDarkLightCurve(u_star).get_light_curve(
-            orbit=orbit, r=r, t=x[mask], texp=texp)
-        light_curve = pm.math.sum(light_curves, axis=-1) + mean
-
-        # Here we track the value of the model light curve for plotting purposes
-        pm.Deterministic("light_curves", light_curves)
-
-        if gp_flag == 1:
-
-            # Transit jitter & GP parameters
-            logs2 = pm.Normal("logs2", mu=np.log(np.var(y[mask])), sd=0.1)
-            logw0 = pm.Normal("logw0", mu=0.0, sd=0.1)
-            logSw4 = pm.Normal("logSw4", mu=np.log(np.var(y[mask])), sd=0.1)
-
-            # GP model for the light curve
-            kernel = xo.gp.terms.SHOTerm(log_Sw4=logSw4, log_w0=logw0, Q=1 / np.sqrt(2))
-            gp = xo.gp.GP(kernel, x[mask], tt.exp(logs2) + tt.zeros(mask.sum()), J=2)
-            pm.Potential("transit_obs", gp.log_likelihood(y[mask] - light_curve))
-            pm.Deterministic("gp_pred", gp.predict())
+            # The impact parameter as a free variable, not related to stellar radius ratio directly here
+            ## ## ##b = pm.Uniform("b", lower=0.000, upper=b_bound, shape=shape, testval=bs)
+            b = xo.distributions.ImpactParameter("b", ror=r, shape=shape, testval=bs)
             
 
-        # The likelihood function assuming known Gaussian uncertainty
-        pm.Normal("obs", mu=light_curve, sd=yerr[mask], observed=y[mask])
+            ecs = xo.UnitDisk("ecs", testval=np.array([0.01, 0.0]))
+            ecc = pm.Deterministic("ecc", tt.sum(ecs ** 2))
+            omega = pm.Deterministic("omega", tt.arctan2(ecs[1], ecs[0]))
 
 
-        if start is None:
-            start = model0.test_point
 
-        if gp_flag == 0:
-            test = 0
+            # Set up a Keplerian orbit for the planets
+            orbit = xo.orbits.KeplerianOrbit(period=period, t0=t0, b=b, rho_star=rho_star, ecc=ecc, omega=omega)
 
-        if test == 1:
-            map_soln0 = xo.optimize(start=start, vars=[logs2, logSw4, logw0])
-            map_soln0 = xo.optimize(start=map_soln0, vars=[r, b], verbose=False)
-            map_soln0 = xo.optimize(start=map_soln0, vars=[period, t0], verbose=False)
-            map_soln0 = xo.optimize(start=map_soln0, vars=[u_star], verbose=False)
-            map_soln0 = xo.optimize(start=map_soln0, vars=[r, b], verbose=False)
-            map_soln0 = xo.optimize(start=map_soln0, vars=[ecs], verbose=False) 
-            map_soln0 = xo.optimize(start=map_soln0, vars=[rho_star], verbose=False)
-            map_soln0 = xo.optimize(start=map_soln0, vars=[mean], verbose=False)
-            map_soln0 = xo.optimize(start=map_soln0, vars=[logs2, logSw4, logw0], verbose=False)
-            map_soln0 = xo.optimize(start=map_soln0)
 
-        elif test == 0:
-            map_soln0 = xo.optimize(start=start)
-            map_soln0 = xo.optimize(start=map_soln0, vars=[r, b], verbose=False)
-            map_soln0 = xo.optimize(start=map_soln0, vars=[period, t0], verbose=False)
-            map_soln0 = xo.optimize(start=map_soln0, vars=[u_star], verbose=False)
-            map_soln0 = xo.optimize(start=map_soln0, vars=[r, b], verbose=False)
-            map_soln0 = xo.optimize(start=map_soln0, vars=[ecs], verbose=False) 
-            map_soln0 = xo.optimize(start=map_soln0, vars=[rho_star], verbose=False)
-            map_soln0 = xo.optimize(start=map_soln0, vars=[mean], verbose=False)
-            map_soln0 = xo.optimize(start=map_soln0)
+            # Compute the model light curve using starry
+            light_curves = xo.LimbDarkLightCurve(u_star).get_light_curve(
+                orbit=orbit, r=r, t=x[mask], texp=texp)
+            light_curve = pm.math.sum(light_curves, axis=-1) + mean
+
+            # Here we track the value of the model light curve for plotting purposes
+            pm.Deterministic("light_curves", light_curves)
+
+            if gp_flag == 1:
+
+                # Transit jitter & GP parameters
+                logs2 = pm.Normal("logs2", mu=np.log(np.var(y[mask])), sd=0.1)
+                logw0 = pm.Normal("logw0", mu=0.0, sd=0.1)
+                logSw4 = pm.Normal("logSw4", mu=np.log(np.var(y[mask])), sd=0.1)
+
+                # GP model for the light curve
+                kernel = xo.gp.terms.SHOTerm(log_Sw4=logSw4, log_w0=logw0, Q=1 / np.sqrt(2))
+                gp = xo.gp.GP(kernel, x[mask], tt.exp(logs2) + tt.zeros(mask.sum()), J=2)
+                pm.Potential("transit_obs", gp.log_likelihood(y[mask] - light_curve))
+                pm.Deterministic("gp_pred", gp.predict())
+                
+
+            # The likelihood function assuming known Gaussian uncertainty
+            pm.Normal("obs", mu=light_curve, sd=yerr[mask], observed=y[mask])
+
+
+            if start is None:
+                start = model0.test_point
+
+            if gp_flag == 0:
+                test = 0
+
+            if test == 1:
+                map_soln0 = xo.optimize(start=start, vars=[logs2, logSw4, logw0])
+                map_soln0 = xo.optimize(start=map_soln0, vars=[r, b], verbose=False)
+                map_soln0 = xo.optimize(start=map_soln0, vars=[period, t0], verbose=False)
+                map_soln0 = xo.optimize(start=map_soln0, vars=[u_star], verbose=False)
+                map_soln0 = xo.optimize(start=map_soln0, vars=[r, b], verbose=False)
+                map_soln0 = xo.optimize(start=map_soln0, vars=[ecs], verbose=False) 
+                map_soln0 = xo.optimize(start=map_soln0, vars=[rho_star], verbose=False)
+                map_soln0 = xo.optimize(start=map_soln0, vars=[mean], verbose=False)
+                map_soln0 = xo.optimize(start=map_soln0, vars=[logs2, logSw4, logw0], verbose=False)
+                map_soln0 = xo.optimize(start=map_soln0)
+
+            elif test == 0:
+                map_soln0 = xo.optimize(start=start)
+                map_soln0 = xo.optimize(start=map_soln0, vars=[r, b], verbose=False)
+                map_soln0 = xo.optimize(start=map_soln0, vars=[period, t0], verbose=False)
+                map_soln0 = xo.optimize(start=map_soln0, vars=[u_star], verbose=False)
+                map_soln0 = xo.optimize(start=map_soln0, vars=[r, b], verbose=False)
+                map_soln0 = xo.optimize(start=map_soln0, vars=[ecs], verbose=False) 
+                map_soln0 = xo.optimize(start=map_soln0, vars=[rho_star], verbose=False)
+                map_soln0 = xo.optimize(start=map_soln0, vars=[mean], verbose=False)
+                map_soln0 = xo.optimize(start=map_soln0)
+
+    elif model_mode == 'duration':
+        with pm.Model() as model0:
+
+            # The baseline flux
+            mean = pm.Normal("mean", mu=0.0, sd=1.0)
+
+            # The time of a reference transit for each planet
+            BoundedNormal_t0 = pm.Bound(pm.Normal, lower=t0s_true-0.5*pers_true, upper=t0s_true+0.5*pers_true)
+            t0 = BoundedNormal_t0("t0", mu=t0s_true, sd=0.01, shape=shape)
+
+            # The log period; also tracking the period itself
+            BoundedNormal_per = pm.Bound(pm.Normal, lower=(pers_true*0.9), upper=(pers_true*1.1))
+            period = BoundedNormal_per("period", mu=(pers_true), sd=0.1, shape=shape)
+
+            
+            # The stellar limb darkening parameters, using inputs from LDTK if stellar data is available
+            BoundedNormal_u_star = pm.Bound(pm.Normal, lower=-1.0, upper=1.0)
+            u_star = BoundedNormal_u_star("u_star", mu=us, sd=us_err, shape=2)
+
+            # The log stellar density; also tracking the stellar density itself
+            #logrho_star = pm.Uniform("logrho_star", lower=-8.0, upper=5.0, shape=shape)
+            #rho_star = pm.Deterministic("rho_star", tt.exp(logrho_star))
+            ###rho_star = pm.Normal("rho_star", mu=rho_test, sd=rho_test_err, shape=shape)
+
+            
+            # The log planet radius ratio; also tracking the radius ratio itself
+            ###logr = pm.Uniform("logr", lower=-10.0, upper=0.0, testval=np.log(rp_rss_true), shape=shape)
+            ###r = pm.Deterministic("r", tt.exp(logr))
+
+
+            BoundedNormal_logr = pm.Bound(pm.Normal, lower=-10.0, upper=0.0)
+            logr = BoundedNormal_logr("logr", mu=np.log(rp_rss_true), sd=10.0, shape=shape)
+            r = pm.Deterministic("r", tt.exp(logr))
+
+            
+            b_bound = 2.0 #pm.Deterministic("b_bound", 1+r)
+
+            # The impact parameter as a free variable, not related to stellar radius ratio directly here
+            ## ## ##b = pm.Uniform("b", lower=0.000, upper=b_bound, shape=shape, testval=bs)
+            b = xo.distributions.ImpactParameter("b", ror=r, shape=shape, testval=bs)
+            
+
+            log_dur = pm.Normal("log_dur", mu=np.log(durs_true), sigma=10.0)
+            dur = pm.Deterministic("dur", tt.exp(log_dur))
+
+
+
+            # Set up a Keplerian orbit for the planets
+            orbit = xo.orbits.KeplerianOrbit(period=period, t0=t0, b=b, duration=dur)
+
+            pm.Deterministic("rho_star", orbit.rho_star)
+
+            # Compute the model light curve using starry
+            light_curves = xo.LimbDarkLightCurve(u_star).get_light_curve(
+                orbit=orbit, r=r, t=x[mask], texp=texp)
+            light_curve = pm.math.sum(light_curves, axis=-1) + mean
+
+            # Here we track the value of the model light curve for plotting purposes
+            pm.Deterministic("light_curves", light_curves)
+
+            if gp_flag == 1:
+
+                # Transit jitter & GP parameters
+                logs2 = pm.Normal("logs2", mu=np.log(np.var(y[mask])), sd=0.1)
+                logw0 = pm.Normal("logw0", mu=0.0, sd=0.1)
+                logSw4 = pm.Normal("logSw4", mu=np.log(np.var(y[mask])), sd=0.1)
+
+                # GP model for the light curve
+                kernel = xo.gp.terms.SHOTerm(log_Sw4=logSw4, log_w0=logw0, Q=1 / np.sqrt(2))
+                gp = xo.gp.GP(kernel, x[mask], tt.exp(logs2) + tt.zeros(mask.sum()), J=2)
+                pm.Potential("transit_obs", gp.log_likelihood(y[mask] - light_curve))
+                pm.Deterministic("gp_pred", gp.predict())
+                
+
+            # The likelihood function assuming known Gaussian uncertainty
+            pm.Normal("obs", mu=light_curve, sd=yerr[mask], observed=y[mask])
+
+
+            if start is None:
+                start = model0.test_point
+
+            if gp_flag == 0:
+                test = 0
+
+            if test == 1:
+                map_soln0 = xo.optimize(start=start, vars=[logs2, logSw4, logw0])
+                map_soln0 = xo.optimize(start=map_soln0, vars=[r, b], verbose=False)
+                map_soln0 = xo.optimize(start=map_soln0, vars=[period, t0], verbose=False)
+                map_soln0 = xo.optimize(start=map_soln0, vars=[u_star], verbose=False)
+                map_soln0 = xo.optimize(start=map_soln0, vars=[r, b], verbose=False)
+                map_soln0 = xo.optimize(start=map_soln0, vars=[dur], verbose=False) 
+                map_soln0 = xo.optimize(start=map_soln0, vars=[mean], verbose=False)
+                map_soln0 = xo.optimize(start=map_soln0, vars=[logs2, logSw4, logw0], verbose=False)
+                map_soln0 = xo.optimize(start=map_soln0)
+
+            elif test == 0:
+                map_soln0 = xo.optimize(start=start)
+                map_soln0 = xo.optimize(start=map_soln0, vars=[r, b], verbose=False)
+                map_soln0 = xo.optimize(start=map_soln0, vars=[period, t0], verbose=False)
+                map_soln0 = xo.optimize(start=map_soln0, vars=[u_star], verbose=False)
+                map_soln0 = xo.optimize(start=map_soln0, vars=[r, b], verbose=False)
+                map_soln0 = xo.optimize(start=map_soln0, vars=[dur], verbose=False)
+                map_soln0 = xo.optimize(start=map_soln0, vars=[mean], verbose=False)
+                map_soln0 = xo.optimize(start=map_soln0)
 
     return model0, map_soln0
+
+print("--- %s seconds ---" % (timer.time() - start_time))
 
 # Optimize all parameters
 model0, map_soln0 = build_model(x, y - smooth, yerr, start=None, mask=None, gp_flag=1, test=1)
 
 plot_light_curve(x, y - smooth, yerr, map_soln0, mask=None, g=-1);
 
+print("--- %s seconds ---" % (timer.time() - start_time))
 
 ####################################################
 
@@ -1436,7 +1552,7 @@ for j in range(len(map_soln0["period"])):
     fig.savefig(dir_path + pl_names[j] + '-folded_smooth-mod.png')
     plt.close()
     
-
+print("--- %s seconds ---" % (timer.time() - start_time))
 
 #######################################################
 
@@ -1445,74 +1561,140 @@ if mask is None:
     mask = np.ones(len(x), dtype=bool)
 
 
-with pm.Model() as model:
+if model_mode == 'full':
+    with pm.Model() as model:
 
-    # The baseline flux
-    mean = pm.Normal("mean", mu=0.0, sd=1.0)
+        # The baseline flux
+        mean = pm.Normal("mean", mu=0.0, sd=1.0)
 
-    # The time of a reference transit for each planet
-    BoundedNormal_t0 = pm.Bound(pm.Normal, lower=t0s_true-0.5*pers_true, upper=t0s_true+0.5*pers_true)
-    t0 = BoundedNormal_t0("t0", mu=t0s_true, sd=0.1, shape=shape)
+        # The time of a reference transit for each planet
+        BoundedNormal_t0 = pm.Bound(pm.Normal, lower=t0s_true-0.5*pers_true, upper=t0s_true+0.5*pers_true)
+        t0 = BoundedNormal_t0("t0", mu=t0s_true, sd=0.1, shape=shape)
 
-    # The log period; also tracking the period itself
-    BoundedNormal_per = pm.Bound(pm.Normal, lower=(pers_true*0.9), upper=(pers_true*1.1))
-    period = BoundedNormal_per("period", mu=(pers_true), sd=0.1, shape=shape)
+        # The log period; also tracking the period itself
+        BoundedNormal_per = pm.Bound(pm.Normal, lower=(pers_true*0.9), upper=(pers_true*1.1))
+        period = BoundedNormal_per("period", mu=(pers_true), sd=0.1, shape=shape)
 
-    
-    # The stellar limb darkening parameters, using inputs from LDTK if stellar data is available
-    BoundedNormal_u_star = pm.Bound(pm.Normal, lower=-1.0, upper=1.0)
-    u = BoundedNormal_u_star("u", mu=us, sd=us_err, shape=2)
-    
-    # The log stellar density; also tracking the stellar density itself
-    #logrho = pm.Uniform("logrho", lower=-8.0, upper=5.0, shape=shape)
-    #rho = pm.Deterministic("rho", tt.exp(logrho))
-    rho = pm.Normal("rho", mu=rho_test, sd=rho_test_err, shape=shape)
+        
+        # The stellar limb darkening parameters, using inputs from LDTK if stellar data is available
+        BoundedNormal_u_star = pm.Bound(pm.Normal, lower=-1.0, upper=1.0)
+        u = BoundedNormal_u_star("u", mu=us, sd=us_err, shape=2)
+        
+        # The log stellar density; also tracking the stellar density itself
+        #logrho = pm.Uniform("logrho", lower=-8.0, upper=5.0, shape=shape)
+        #rho = pm.Deterministic("rho", tt.exp(logrho))
+        rho = pm.Normal("rho", mu=rho_test, sd=rho_test_err, shape=shape)
 
-    
-    # The log planet radius ratio; also tracking the radius ratio itself
-    ##logr = pm.Uniform("logr", lower=-10.0, upper=0.0, testval=np.log(rp_rss_true), shape=shape)
-    ##r = pm.Deterministic("r", tt.exp(logr))
+        
+        # The log planet radius ratio; also tracking the radius ratio itself
+        ##logr = pm.Uniform("logr", lower=-10.0, upper=0.0, testval=np.log(rp_rss_true), shape=shape)
+        ##r = pm.Deterministic("r", tt.exp(logr))
 
-    BoundedNormal_logr = pm.Bound(pm.Normal, lower=-10.0, upper=0.0)
-    logr = BoundedNormal_logr("logr", mu=np.log(rp_rss_true), sd=10.0, shape=shape)
-    r = pm.Deterministic("r", tt.exp(logr))
-    
-    b_bound = 2.0 #pm.Deterministic("b_bound", 1+r)
+        BoundedNormal_logr = pm.Bound(pm.Normal, lower=-10.0, upper=0.0)
+        logr = BoundedNormal_logr("logr", mu=np.log(rp_rss_true), sd=10.0, shape=shape)
+        r = pm.Deterministic("r", tt.exp(logr))
+        
+        b_bound = 2.0 #pm.Deterministic("b_bound", 1+r)
 
-    # The impact parameter as a free variable, not related to stellar radius ratio directly here
-    ## ## ##b = pm.Uniform("b", lower=0.000, upper=b_bound, shape=shape, testval=bs)
-    b = xo.distributions.ImpactParameter("b", ror=r, shape=shape, testval=bs)
-
-
-    ecs = xo.UnitDisk("ecs", testval=np.array([0.01, 0.0]))
-    ecc = pm.Deterministic("ecc", tt.sum(ecs ** 2))
-    omega = pm.Deterministic("omega", tt.arctan2(ecs[1], ecs[0]))
+        # The impact parameter as a free variable, not related to stellar radius ratio directly here
+        ## ## ##b = pm.Uniform("b", lower=0.000, upper=b_bound, shape=shape, testval=bs)
+        b = xo.distributions.ImpactParameter("b", ror=r, shape=shape, testval=bs)
 
 
-    # Set up a Keplerian orbit for the planets
-    orbit = xo.orbits.KeplerianOrbit(period=period, t0=t0, b=b, rho_star=rho, ecc=ecc, omega=omega) 
+        ecs = xo.UnitDisk("ecs", testval=np.array([0.01, 0.0]))
+        ecc = pm.Deterministic("ecc", tt.sum(ecs ** 2))
+        omega = pm.Deterministic("omega", tt.arctan2(ecs[1], ecs[0]))
 
-    # Compute the model light curve using starry 
-    light_curves = xo.LimbDarkLightCurve(u).get_light_curve(
-        orbit=orbit, r=r, t=x[mask], texp=texp)
-    light_curve = pm.math.sum(light_curves, axis=-1) + mean
 
-    ###pm.Deterministic("light_curves", light_curves) ###### CHANGED!!!!!
+        # Set up a Keplerian orbit for the planets
+        orbit = xo.orbits.KeplerianOrbit(period=period, t0=t0, b=b, rho_star=rho, ecc=ecc, omega=omega) 
 
-    # The likelihood function assuming known Gaussian uncertainty
-    pm.Normal("obs", mu=light_curve, sd=yerr[mask], observed=y[mask])
+        # Compute the model light curve using starry 
+        light_curves = xo.LimbDarkLightCurve(u).get_light_curve(
+            orbit=orbit, r=r, t=x[mask], texp=texp)
+        light_curve = pm.math.sum(light_curves, axis=-1) + mean
 
-    map_soln = xo.optimize(start=start)
-    map_soln = xo.optimize(start=map_soln, vars=[r, b], verbose=False)
-    map_soln = xo.optimize(start=map_soln, vars=[period, t0], verbose=False)
-    map_soln = xo.optimize(start=map_soln, vars=[u], verbose=False)
-    map_soln = xo.optimize(start=map_soln, vars=[r, b], verbose=False)
-    map_soln = xo.optimize(start=map_soln, vars=[ecs], verbose=False) 
-    map_soln = xo.optimize(start=map_soln, vars=[rho], verbose=False) 
-    map_soln = xo.optimize(start=map_soln, vars=[mean], verbose=False)
-    map_soln = xo.optimize(start=map_soln, verbose=False)
+        ###pm.Deterministic("light_curves", light_curves) ###### CHANGED!!!!!
+
+        # The likelihood function assuming known Gaussian uncertainty
+        pm.Normal("obs", mu=light_curve, sd=yerr[mask], observed=y[mask])
+
+        map_soln = xo.optimize(start=start)
+        map_soln = xo.optimize(start=map_soln, vars=[r, b], verbose=False)
+        map_soln = xo.optimize(start=map_soln, vars=[period, t0], verbose=False)
+        map_soln = xo.optimize(start=map_soln, vars=[u], verbose=False)
+        map_soln = xo.optimize(start=map_soln, vars=[r, b], verbose=False)
+        map_soln = xo.optimize(start=map_soln, vars=[ecs], verbose=False) 
+        map_soln = xo.optimize(start=map_soln, vars=[rho], verbose=False) 
+        map_soln = xo.optimize(start=map_soln, vars=[mean], verbose=False)
+        map_soln = xo.optimize(start=map_soln, verbose=False)
+
+elif model_mode == 'duration':
+    with pm.Model() as model:
+
+        # The baseline flux
+        mean = pm.Normal("mean", mu=0.0, sd=1.0)
+
+        # The time of a reference transit for each planet
+        BoundedNormal_t0 = pm.Bound(pm.Normal, lower=t0s_true-0.5*pers_true, upper=t0s_true+0.5*pers_true)
+        t0 = BoundedNormal_t0("t0", mu=t0s_true, sd=0.1, shape=shape)
+
+        # The log period; also tracking the period itself
+        BoundedNormal_per = pm.Bound(pm.Normal, lower=(pers_true*0.9), upper=(pers_true*1.1))
+        period = BoundedNormal_per("period", mu=(pers_true), sd=0.1, shape=shape)
+
+        
+        # The stellar limb darkening parameters, using inputs from LDTK if stellar data is available
+        BoundedNormal_u_star = pm.Bound(pm.Normal, lower=-1.0, upper=1.0)
+        u = BoundedNormal_u_star("u", mu=us, sd=us_err, shape=2)
+        
+        # The log stellar density; also tracking the stellar density itself
+        #logrho = pm.Uniform("logrho", lower=-8.0, upper=5.0, shape=shape)
+        #rho = pm.Deterministic("rho", tt.exp(logrho))
+        log_dur = pm.Normal("log_dur", mu=np.log(durs_true), sigma=10.0)
+        dur = pm.Deterministic("dur", tt.exp(log_dur))
+
+        
+        # The log planet radius ratio; also tracking the radius ratio itself
+        ##logr = pm.Uniform("logr", lower=-10.0, upper=0.0, testval=np.log(rp_rss_true), shape=shape)
+        ##r = pm.Deterministic("r", tt.exp(logr))
+
+        BoundedNormal_logr = pm.Bound(pm.Normal, lower=-10.0, upper=0.0)
+        logr = BoundedNormal_logr("logr", mu=np.log(rp_rss_true), sd=10.0, shape=shape)
+        r = pm.Deterministic("r", tt.exp(logr))
+        
+        b_bound = 2.0 #pm.Deterministic("b_bound", 1+r)
+
+        # The impact parameter as a free variable, not related to stellar radius ratio directly here
+        ## ## ##b = pm.Uniform("b", lower=0.000, upper=b_bound, shape=shape, testval=bs)
+        b = xo.distributions.ImpactParameter("b", ror=r, shape=shape, testval=bs)
+
+        # Set up a Keplerian orbit for the planets
+        orbit = xo.orbits.KeplerianOrbit(period=period, t0=t0, b=b, duration=dur) 
+
+        pm.Deterministic("rho", orbit.rho_star)
+
+        # Compute the model light curve using starry 
+        light_curves = xo.LimbDarkLightCurve(u).get_light_curve(
+            orbit=orbit, r=r, t=x[mask], texp=texp)
+        light_curve = pm.math.sum(light_curves, axis=-1) + mean
+
+        ###pm.Deterministic("light_curves", light_curves) ###### CHANGED!!!!!
+
+        # The likelihood function assuming known Gaussian uncertainty
+        pm.Normal("obs", mu=light_curve, sd=yerr[mask], observed=y[mask])
+
+        map_soln = xo.optimize(start=start)
+        map_soln = xo.optimize(start=map_soln, vars=[r, b], verbose=False)
+        map_soln = xo.optimize(start=map_soln, vars=[period, t0], verbose=False)
+        map_soln = xo.optimize(start=map_soln, vars=[u], verbose=False)
+        map_soln = xo.optimize(start=map_soln, vars=[r, b], verbose=False)
+        map_soln = xo.optimize(start=map_soln, vars=[dur], verbose=False) 
+        map_soln = xo.optimize(start=map_soln, vars=[mean], verbose=False)
+        map_soln = xo.optimize(start=map_soln, verbose=False)
 
 #####################################################
+
 
 for j in range(len(pers_true)):
     print('Comparing input per and t0 to initial model...\n')
@@ -1548,6 +1730,7 @@ for j in range(len(pers_true)):
 
 print('Impact parameter: ', map_soln["b"])
 
+print("--- %s seconds ---" % (timer.time() - start_time))
 
 #####################################################
 
@@ -1577,77 +1760,149 @@ with model:
 
 ######################################################
 
+print("--- %s seconds ---" % (timer.time() - start_time))
 
-varnames=["t0","period","r","b","ecc","omega","rho","mean","u"]
-colnames=[]
 
-for vv in varnames[:7]:
-    for j in range(len(pers_true)):
-        colnames.append(vv + '__' + str(j))
-        
-colnames += ["mean","u__0","u__1"]
+if model_mode == 'full':
+    varnames=["t0","period","r","b","ecc","omega","rho","mean","u"]
+    colnames=[]
 
-df = pm.trace_to_dataframe(tr, varnames=varnames)
-df.columns = colnames
-df.to_csv(dir_path + sys_name + "-trace.csv")
-
-df = pd.read_csv(dir_path + sys_name + "-trace.csv")
-
+    for vv in varnames[:7]:
+        for j in range(len(pers_true)):
+            colnames.append(vv + '__' + str(j))
             
-#####################################################
+    colnames += ["mean","u__0","u__1"]
+
+    df = pm.trace_to_dataframe(tr, varnames=varnames)
+    df.columns = colnames
+    df.to_csv(dir_path + sys_name + "-trace.csv")
+
+    df = pd.read_csv(dir_path + sys_name + "-trace.csv")
+
+                
+    #####################################################
 
 
-fig1 = pm.traceplot(tr, var_names=varnames, compact=False)
-plt.rc('text', usetex=False)
-figall = fig1[0][0].figure
-figall.savefig(dir_path + sys_name + '-trace_plots-all.png')
-plt.close()
+    fig1 = pm.traceplot(tr, var_names=varnames, compact=False)
+    plt.rc('text', usetex=False)
+    figall = fig1[0][0].figure
+    figall.savefig(dir_path + sys_name + '-trace_plots-all.png')
+    plt.close()
 
-if len(pers_true) > 1:
-    single_vars = ["r", "b", "ecc", "omega", "rho"]
-    for var in single_vars:
-        fig0 = pm.traceplot(tr, var_names=[var], compact=False)
-        plt.rc('text', usetex=False)
-        figall = fig0[0][0].figure
-        figall.savefig(dir_path + sys_name + '-trace_plots-' + var + '.png')
-        plt.close()
-        
+    if len(pers_true) > 1:
+        single_vars = ["r", "b", "ecc", "omega", "rho"]
+        for var in single_vars:
+            fig0 = pm.traceplot(tr, var_names=[var], compact=False)
+            plt.rc('text', usetex=False)
+            figall = fig0[0][0].figure
+            figall.savefig(dir_path + sys_name + '-trace_plots-' + var + '.png')
+            plt.close()
+            
 
-#####################################################
-
-
-c = ChainConsumer()
-c.configure(usetex=False)
-c.add_chain(np.array(df[colnames]),parameters=colnames)
-c.configure(usetex=False, label_font_size=10, tick_font_size=8)
-plt.rc('text', usetex=False)
-plt.gcf().subplots_adjust(bottom=0.01, left=0.01)
-
-fig2 = c.plotter.plot()
-fig2.tight_layout()
-fig2.savefig(dir_path + sys_name + '-corner_full.png')
-plt.close()
+    #####################################################
 
 
-#####################################################
-
-
-for j in range(len(pers_true)):
     c = ChainConsumer()
     c.configure(usetex=False)
-    colsmain = ["r__" + str(j),"b__" + str(j),"ecc__" + str(j),"omega__" + str(j),"rho__" + str(j)]
-    colsmain_labels = ["r", "b", "ecc", "omega", "rhocirc"]
-    c.add_chain(np.array(df[colsmain]),parameters=colsmain_labels)
+    c.add_chain(np.array(df[colnames]),parameters=colnames)
     c.configure(usetex=False, label_font_size=10, tick_font_size=8)
     plt.rc('text', usetex=False)
     plt.gcf().subplots_adjust(bottom=0.01, left=0.01)
 
-    fig3 = c.plotter.plot()
-    fig3.tight_layout()
-    fig3.savefig(dir_path + pl_names[j] + '-corner_main.png')
+    fig2 = c.plotter.plot()
+    fig2.tight_layout()
+    fig2.savefig(dir_path + sys_name + '-corner_full.png')
     plt.close()
 
-    
+
+    #####################################################
+
+
+    for j in range(len(pers_true)):
+        c = ChainConsumer()
+        c.configure(usetex=False)
+        colsmain = ["r__" + str(j),"b__" + str(j),"ecc__" + str(j),"omega__" + str(j),"rho__" + str(j)]
+        colsmain_labels = ["r", "b", "ecc", "omega", "rhocirc"]
+        c.add_chain(np.array(df[colsmain]),parameters=colsmain_labels)
+        c.configure(usetex=False, label_font_size=10, tick_font_size=8)
+        plt.rc('text', usetex=False)
+        plt.gcf().subplots_adjust(bottom=0.01, left=0.01)
+
+        fig3 = c.plotter.plot()
+        fig3.tight_layout()
+        fig3.savefig(dir_path + pl_names[j] + '-corner_main.png')
+        plt.close()
+
+elif model_mode == 'duration':
+    varnames=["t0","period","r","b","dur","rho","mean","u"]
+    colnames=[]
+
+    for vv in varnames[:6]:
+        for j in range(len(pers_true)):
+            colnames.append(vv + '__' + str(j))
+            
+    colnames += ["mean","u__0","u__1"]
+
+    df = pm.trace_to_dataframe(tr, varnames=varnames)
+    df.columns = colnames
+    df.to_csv(dir_path + sys_name + "-trace.csv")
+
+    df = pd.read_csv(dir_path + sys_name + "-trace.csv")
+
+                
+    #####################################################
+
+
+    fig1 = pm.traceplot(tr, var_names=varnames, compact=False)
+    plt.rc('text', usetex=False)
+    figall = fig1[0][0].figure
+    figall.savefig(dir_path + sys_name + '-trace_plots-all.png')
+    plt.close()
+
+    if len(pers_true) > 1:
+        single_vars = ["r", "b", "dur", "rho"]
+        for var in single_vars:
+            fig0 = pm.traceplot(tr, var_names=[var], compact=False)
+            plt.rc('text', usetex=False)
+            figall = fig0[0][0].figure
+            figall.savefig(dir_path + sys_name + '-trace_plots-' + var + '.png')
+            plt.close()
+            
+
+    #####################################################
+
+
+    c = ChainConsumer()
+    c.configure(usetex=False)
+    c.add_chain(np.array(df[colnames]),parameters=colnames)
+    c.configure(usetex=False, label_font_size=10, tick_font_size=8)
+    plt.rc('text', usetex=False)
+    plt.gcf().subplots_adjust(bottom=0.01, left=0.01)
+
+    fig2 = c.plotter.plot()
+    fig2.tight_layout()
+    fig2.savefig(dir_path + sys_name + '-corner_full.png')
+    plt.close()
+
+
+    #####################################################
+
+
+    for j in range(len(pers_true)):
+        c = ChainConsumer()
+        c.configure(usetex=False)
+        colsmain = ["r__" + str(j),"b__" + str(j),"dur__" + str(j),"rho__" + str(j)]
+        colsmain_labels = ["r", "b", "dur", "rhocirc"]
+        c.add_chain(np.array(df[colsmain]),parameters=colsmain_labels)
+        c.configure(usetex=False, label_font_size=10, tick_font_size=8)
+        plt.rc('text', usetex=False)
+        plt.gcf().subplots_adjust(bottom=0.01, left=0.01)
+
+        fig3 = c.plotter.plot()
+        fig3.tight_layout()
+        fig3.savefig(dir_path + pl_names[j] + '-corner_main.png')
+        plt.close()
+
 ###################################################
 
 
@@ -2513,6 +2768,7 @@ for j in range(len(pers_true)):
     plt.close()
     
 
+print("--- %s seconds ---" % (timer.time() - start_time))
 
 #################################################
 
@@ -2524,26 +2780,49 @@ print( summary )
 
 tr_fin = pd.read_csv(dir_path + sys_name + '-trace.csv')
 
-for j in range(len(pers_true)):
-    mean_f, rp_f, b_f, rhostar_f, t0_f, per_f, u1_f, u2_f, ecc_f, omega_f = [np.median(tr_fin["mean"]), np.median(tr_fin["r__" + str(j)]), np.median(tr_fin["b__" + str(j)]), np.median(tr_fin["rho__" + str(j)]), np.median(tr_fin["t0__" + str(j)]), np.median(tr_fin["period__" + str(j)]), np.median(tr_fin["u__0"]), np.median(tr_fin["u__1"]), np.median(tr_fin["ecc__" + str(j)]), np.median(tr_fin["omega__" + str(j)])]
-    mean_f_err1, rp_f_err1, b_f_err1, rhostar_f_err1, t0_f_err1, per_f_err1, u1_f_err1, u2_f_err1, ecc_f_err1, omega_f_err1  = [np.percentile(q=[15.865], a=tr_fin["mean"])[0], np.percentile(q=[15.865], a=tr_fin["r__" + str(j)])[0], np.percentile(q=[15.865], a=tr_fin["b__" + str(j)])[0], np.percentile(q=[15.865], a=tr_fin["rho__" + str(j)])[0], np.percentile(q=[15.865], a=tr_fin["t0__" + str(j)])[0], np.percentile(q=[15.865], a=tr_fin["period__" + str(j)])[0], np.percentile(q=[15.865], a=tr_fin["u__0"])[0], np.percentile(q=[15.865], a=tr_fin["u__1"])[0], np.percentile(q=[15.865], a=tr_fin["ecc__" + str(j)])[0], np.percentile(q=[15.865], a=tr_fin["omega__" + str(j)])[0]]
-    mean_f_err2, rp_f_err2, b_f_err2, rhostar_f_err2, t0_f_err2, per_f_err2, u1_f_err2, u2_f_err2, ecc_f_err2, omega_f_err2  = [np.percentile(q=[84.135], a=tr_fin["mean"])[0], np.percentile(q=[84.135], a=tr_fin["r__" + str(j)])[0], np.percentile(q=[84.135], a=tr_fin["b__" + str(j)])[0], np.percentile(q=[84.135], a=tr_fin["rho__" + str(j)])[0], np.percentile(q=[84.135], a=tr_fin["t0__" + str(j)])[0], np.percentile(q=[84.135], a=tr_fin["period__" + str(j)])[0], np.percentile(q=[84.135], a=tr_fin["u__0"])[0], np.percentile(q=[84.135], a=tr_fin["u__1"])[0], np.percentile(q=[84.135], a=tr_fin["ecc__" + str(j)])[0], np.percentile(q=[84.135], a=tr_fin["omega__" + str(j)])[0]]
-    mean_f_u, rp_f_u, b_f_u, rhostar_f_u, t0_f_u, per_f_u, u1_f_u, u2_f_u, ecc_f_u, omega_f_u  = ['','rstar','','g/cc','days','days','', '', '', 'radians']
 
-    outputs_all = [['period', per_f_u, per_f, per_f_err2-per_f, per_f_err1-per_f],
-                   ['t0', t0_f_u, t0_f, t0_f_err2-t0_f, t0_f_err1-t0_f],
-                   ['rp', rp_f_u, rp_f, rp_f_err2-rp_f, rp_f_err1-rp_f],
-                   ['rhostar', rhostar_f_u, rhostar_f, rhostar_f_err2-rhostar_f, rhostar_f_err1-rhostar_f],
-                   ['b', b_f_u, b_f, b_f_err2-b_f, b_f_err1-b_f],
-                   ['mean', mean_f_u, mean_f, mean_f_err2-mean_f, mean_f_err1-mean_f],
-                   ['u1', u1_f_u, u1_f, u1_f_err2-u1_f, u1_f_err1-u1_f],
-                   ['u2', u2_f_u, u2_f, u2_f_err2-u2_f, u2_f_err1-u2_f],
-                   ['ecc', ecc_f_u, ecc_f, ecc_f_err2-ecc_f, ecc_f_err1-ecc_f],
-                   ['omega', omega_f_u, omega_f, omega_f_err2-omega_f, omega_f_err1-omega_f]]
-                   #['dur', dur_f_u, dur_f, dur_f_err, dur_f_err]]
 
-    ecc_output = pd.DataFrame(outputs_all, columns=['parameter','units','value','error','error_lower'])
-    ecc_output.to_csv(dir_path + pl_names[j] + '-outputs.csv')
+if model_mode == 'full':
+    for j in range(len(pers_true)):
+        mean_f, rp_f, b_f, rhostar_f, t0_f, per_f, u1_f, u2_f, ecc_f, omega_f = [np.median(tr_fin["mean"]), np.median(tr_fin["r__" + str(j)]), np.median(tr_fin["b__" + str(j)]), np.median(tr_fin["rho__" + str(j)]), np.median(tr_fin["t0__" + str(j)]), np.median(tr_fin["period__" + str(j)]), np.median(tr_fin["u__0"]), np.median(tr_fin["u__1"]), np.median(tr_fin["ecc__" + str(j)]), np.median(tr_fin["omega__" + str(j)])]
+        mean_f_err1, rp_f_err1, b_f_err1, rhostar_f_err1, t0_f_err1, per_f_err1, u1_f_err1, u2_f_err1, ecc_f_err1, omega_f_err1  = [np.percentile(q=[15.865], a=tr_fin["mean"])[0], np.percentile(q=[15.865], a=tr_fin["r__" + str(j)])[0], np.percentile(q=[15.865], a=tr_fin["b__" + str(j)])[0], np.percentile(q=[15.865], a=tr_fin["rho__" + str(j)])[0], np.percentile(q=[15.865], a=tr_fin["t0__" + str(j)])[0], np.percentile(q=[15.865], a=tr_fin["period__" + str(j)])[0], np.percentile(q=[15.865], a=tr_fin["u__0"])[0], np.percentile(q=[15.865], a=tr_fin["u__1"])[0], np.percentile(q=[15.865], a=tr_fin["ecc__" + str(j)])[0], np.percentile(q=[15.865], a=tr_fin["omega__" + str(j)])[0]]
+        mean_f_err2, rp_f_err2, b_f_err2, rhostar_f_err2, t0_f_err2, per_f_err2, u1_f_err2, u2_f_err2, ecc_f_err2, omega_f_err2  = [np.percentile(q=[84.135], a=tr_fin["mean"])[0], np.percentile(q=[84.135], a=tr_fin["r__" + str(j)])[0], np.percentile(q=[84.135], a=tr_fin["b__" + str(j)])[0], np.percentile(q=[84.135], a=tr_fin["rho__" + str(j)])[0], np.percentile(q=[84.135], a=tr_fin["t0__" + str(j)])[0], np.percentile(q=[84.135], a=tr_fin["period__" + str(j)])[0], np.percentile(q=[84.135], a=tr_fin["u__0"])[0], np.percentile(q=[84.135], a=tr_fin["u__1"])[0], np.percentile(q=[84.135], a=tr_fin["ecc__" + str(j)])[0], np.percentile(q=[84.135], a=tr_fin["omega__" + str(j)])[0]]
+        mean_f_u, rp_f_u, b_f_u, rhostar_f_u, t0_f_u, per_f_u, u1_f_u, u2_f_u, ecc_f_u, omega_f_u  = ['','rstar','','g/cc','days','days','', '', '', 'radians']
+
+        outputs_all = [['period', per_f_u, per_f, per_f_err2-per_f, per_f_err1-per_f],
+                       ['t0', t0_f_u, t0_f, t0_f_err2-t0_f, t0_f_err1-t0_f],
+                       ['rp', rp_f_u, rp_f, rp_f_err2-rp_f, rp_f_err1-rp_f],
+                       ['rhostar', rhostar_f_u, rhostar_f, rhostar_f_err2-rhostar_f, rhostar_f_err1-rhostar_f],
+                       ['b', b_f_u, b_f, b_f_err2-b_f, b_f_err1-b_f],
+                       ['mean', mean_f_u, mean_f, mean_f_err2-mean_f, mean_f_err1-mean_f],
+                       ['u1', u1_f_u, u1_f, u1_f_err2-u1_f, u1_f_err1-u1_f],
+                       ['u2', u2_f_u, u2_f, u2_f_err2-u2_f, u2_f_err1-u2_f],
+                       ['ecc', ecc_f_u, ecc_f, ecc_f_err2-ecc_f, ecc_f_err1-ecc_f],
+                       ['omega', omega_f_u, omega_f, omega_f_err2-omega_f, omega_f_err1-omega_f]]
+
+        ecc_output = pd.DataFrame(outputs_all, columns=['parameter','units','value','error','error_lower'])
+        ecc_output.to_csv(dir_path + pl_names[j] + '-outputs.csv')
+
+elif model_mode == 'duration':
+    for j in range(len(pers_true)):
+        mean_f, rp_f, b_f, rhostar_f, t0_f, per_f, u1_f, u2_f, dur_f = [np.median(tr_fin["mean"]), np.median(tr_fin["r__" + str(j)]), np.median(tr_fin["b__" + str(j)]), np.median(tr_fin["rho__" + str(j)]), np.median(tr_fin["t0__" + str(j)]), np.median(tr_fin["period__" + str(j)]), np.median(tr_fin["u__0"]), np.median(tr_fin["u__1"]), np.median(tr_fin["dur__" + str(j)])]
+        mean_f_err1, rp_f_err1, b_f_err1, rhostar_f_err1, t0_f_err1, per_f_err1, u1_f_err1, u2_f_err1, dur_f_err1  = [np.percentile(q=[15.865], a=tr_fin["mean"])[0], np.percentile(q=[15.865], a=tr_fin["r__" + str(j)])[0], np.percentile(q=[15.865], a=tr_fin["b__" + str(j)])[0], np.percentile(q=[15.865], a=tr_fin["rho__" + str(j)])[0], np.percentile(q=[15.865], a=tr_fin["t0__" + str(j)])[0], np.percentile(q=[15.865], a=tr_fin["period__" + str(j)])[0], np.percentile(q=[15.865], a=tr_fin["u__0"])[0], np.percentile(q=[15.865], a=tr_fin["u__1"])[0], np.percentile(q=[15.865], a=tr_fin["dur__" + str(j)])[0]]
+        mean_f_err2, rp_f_err2, b_f_err2, rhostar_f_err2, t0_f_err2, per_f_err2, u1_f_err2, u2_f_err2, dur_f_err2  = [np.percentile(q=[84.135], a=tr_fin["mean"])[0], np.percentile(q=[84.135], a=tr_fin["r__" + str(j)])[0], np.percentile(q=[84.135], a=tr_fin["b__" + str(j)])[0], np.percentile(q=[84.135], a=tr_fin["rho__" + str(j)])[0], np.percentile(q=[84.135], a=tr_fin["t0__" + str(j)])[0], np.percentile(q=[84.135], a=tr_fin["period__" + str(j)])[0], np.percentile(q=[84.135], a=tr_fin["u__0"])[0], np.percentile(q=[84.135], a=tr_fin["u__1"])[0], np.percentile(q=[84.135], a=tr_fin["dur__" + str(j)])[0]]
+        mean_f_u, rp_f_u, b_f_u, rhostar_f_u, t0_f_u, per_f_u, u1_f_u, u2_f_u, dur_f_u  = ['','rstar','','g/cc','days','days','', '', 'days']
+
+        outputs_all = [['period', per_f_u, per_f, per_f_err2-per_f, per_f_err1-per_f],
+                       ['t0', t0_f_u, t0_f, t0_f_err2-t0_f, t0_f_err1-t0_f],
+                       ['rp', rp_f_u, rp_f, rp_f_err2-rp_f, rp_f_err1-rp_f],
+                       ['rhostar', rhostar_f_u, rhostar_f, rhostar_f_err2-rhostar_f, rhostar_f_err1-rhostar_f],
+                       ['b', b_f_u, b_f, b_f_err2-b_f, b_f_err1-b_f],
+                       ['mean', mean_f_u, mean_f, mean_f_err2-mean_f, mean_f_err1-mean_f],
+                       ['u1', u1_f_u, u1_f, u1_f_err2-u1_f, u1_f_err1-u1_f],
+                       ['u2', u2_f_u, u2_f, u2_f_err2-u2_f, u2_f_err1-u2_f],
+                       ['dur', dur_f_u, dur_f, dur_f_err, dur_f_err]]
+
+        ecc_output = pd.DataFrame(outputs_all, columns=['parameter','units','value','error','error_lower'])
+        ecc_output.to_csv(dir_path + pl_names[j] + '-outputs.csv')
+
 
 
 for j in range(len(full_toi_ids)):
@@ -2589,3 +2868,5 @@ for j in range(len(full_toi_ids)):
             plt.close()
 
 print(sys_name, ' - Complete!')
+
+print("--- %s seconds ---" % (timer.time() - start_time))
